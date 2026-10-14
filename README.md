@@ -13,7 +13,7 @@ creates that release:
     needs: release
     uses: Exylia-Plugins/.github/.github/workflows/modrinth.yml@main
     with:
-      version: ${{ needs.release.outputs.version }}  # no leading v
+      version: ${{ github.ref_name }}            # v1.2.0 or 1.2.0; a leading v is stripped
       name: ExyliaDisplays                       # asset ExyliaDisplays-<version>.jar
       project-id: ${{ vars.MODRINTH_PROJECT_ID }}
       loaders: '["folia","paper","purpur"]'
@@ -21,13 +21,9 @@ creates that release:
     secrets: inherit
 ```
 
-The release job exposes the version as an output, e.g. a step with `id: version` running
-`echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"` and
-`outputs: { version: ${{ steps.version.outputs.version }} }` on the job.
-
 | Input | Default | |
 |---|---|---|
-| `version` | required | Release tag is `v<version>` |
+| `version` | required | `1.2.0` or `v1.2.0`; the release tag is `v<version>` |
 | `name` | required | Display name; the version is named `<name> <version>` |
 | `jar` | `<name>-<version>.jar` | Release asset pattern; must match exactly one file |
 | `project-id` | empty | Modrinth id or slug; empty skips with a notice |

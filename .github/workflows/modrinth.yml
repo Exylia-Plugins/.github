@@ -8,7 +8,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: Version number without the leading v; the release tag is v<version>.
+        description: Version number, e.g. 1.2.0 or the tag v1.2.0 (a leading v is stripped); the release tag is v<version>.
         type: string
         required: true
       name:
@@ -75,6 +75,7 @@ jobs:
             exit 0
           fi
 
+          VERSION="${VERSION#v}"
           tag="v${VERSION}"
           jar="${JAR:-${NAME}-${VERSION}.jar}"
           mkdir -p dist
