@@ -1,0 +1,89 @@
+name: Modrinth
+
+# Mirrors a plugin's GitHub release to Modrinth. Called by the plugin's own
+# release workflow after its release job: the jar and the changelog are read
+# back from that release, so the caller passes no artifact. Not configured (no
+# MODRINTH_TOKEN or no project id) means skipped, not failed.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version number without the leading v; the release tag is v<version>.
+        type: string
+        required: true
+      name:
+        description: Display name, e.g. ExyliaDisplays. The version is named "<name> <version>".
+        type: string
+        required: true
+      jar:
+        description: Release asset to upload (gh release download pattern). Defaults to <name>-<version>.jar.
+        type: string
+        default: ''
+      project-id:
+        description: Modrinth project id or slug. Empty skips the upload.
+        type: string
+        default: ''
+      loaders:
+        description: JSON array of Modrinth loaders.
+        type: string
+        default: '["folia","paper","purpur"]'
+      game-versions:
+        description: JSON array of Minecraft versions. Empty uses the script's default list.
+        type: string
+        default: ''
+      dependencies:
+        description: JSON array of Modrinth dependency objects ({"project_id", "dependency_type"}).
+        type: string
+        default: '[]'
+    secrets:
+      MODRINTH_TOKEN:
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the publish script
+        uses: actions/checkout@v4
+        with:
+          repository: Exylia-Plugins/.github
+          ref: main
+          path: .exylia-shared
+
+      - name: Publish to Modrinth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT: ${{ inputs.project-id }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          JAR: ${{ inputs.jar }}
+          LOADERS: ${{ inputs.loaders }}
+          GAME_VERSIONS: ${{ inputs.game-versions }}
+          DEPENDENCIES: ${{ inputs.dependencies }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MODRINTH_TOKEN:-}" ]]; then
+            echo "::notice::MODRINTH_TOKEN is not configured; skipping Modrinth."
+            exit 0
+          fi
+          if [[ -z "${MODRINTH_PROJECT:-}" ]]; then
+            echo "::notice::No Modrinth project id (vars.MODRINTH_PROJECT_ID); skipping Modrinth."
+            exit 0
+          fi
+
+          tag="v${VERSION}"
+          jar="${JAR:-${NAME}-${VERSION}.jar}"
+          mkdir -p dist
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$jar" --dir dist
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body > dist/changelog.md
+
+          jars=(dist/*.jar)
+          if (( ${#jars[@]} != 1 )) || [[ ! -f "${jars[0]}" ]]; then
+            echo "Expected exactly one jar matching '${jar}' on release ${tag}." >&2
+            exit 1
+          fi
+          ./.exylia-shared/publish-modrinth.sh "$NAME" "$VERSION" "${jars[0]}" dist/changelog.md
