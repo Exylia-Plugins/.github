@@ -1,0 +1,97 @@
+name: BuiltByBit
+
+# Mirrors a plugin's GitHub release to BuiltByBit. Called by the plugin's own
+# release workflow after its release job: the jar is read back from that
+# release, and the update post lists the feat/fix/perf commits since the
+# previous tag (the generated release notes are only a compare link). Not
+# configured (no BUILTBYBIT_TOKEN or no resource id) means skipped, not failed.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version number, e.g. 1.2.0 or the tag v1.2.0 (a leading v is stripped); the release tag is v<version>.
+        type: string
+        required: true
+      name:
+        description: Display name, e.g. ExyliaDisplays. The update is titled "<name> v<version>".
+        type: string
+        required: true
+      jar:
+        description: Release asset to upload (gh release download pattern). Defaults to <name>-<version>.jar.
+        type: string
+        default: ''
+      resource-id:
+        description: BuiltByBit resource id. Empty skips the upload.
+        type: string
+        default: ''
+      post-update:
+        description: Also post the public update message, not only the new version file.
+        type: boolean
+        default: true
+    secrets:
+      BUILTBYBIT_TOKEN:
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out the publish script
+        uses: actions/checkout@v4
+        with:
+          repository: Exylia-Plugins/.github
+          ref: main
+          path: .exylia-shared
+
+      - name: Publish to BuiltByBit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILTBYBIT_TOKEN: ${{ secrets.BUILTBYBIT_TOKEN }}
+          BBB_RESOURCE: ${{ inputs.resource-id }}
+          POST_UPDATE: ${{ inputs.post-update }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          JAR: ${{ inputs.jar }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BUILTBYBIT_TOKEN:-}" ]]; then
+            echo "::notice::BUILTBYBIT_TOKEN is not configured; skipping BuiltByBit."
+            exit 0
+          fi
+          if [[ -z "${BBB_RESOURCE:-}" ]]; then
+            echo "::notice::No BuiltByBit resource id (vars.BBB_RESOURCE_ID); skipping BuiltByBit."
+            exit 0
+          fi
+
+          VERSION="${VERSION#v}"
+          tag="v${VERSION}"
+          jar="${JAR:-${NAME}-${VERSION}.jar}"
+          mkdir -p .bbb-dist
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$jar" --dir .bbb-dist
+
+          jars=(.bbb-dist/*.jar)
+          if (( ${#jars[@]} != 1 )) || [[ ! -f "${jars[0]}" ]]; then
+            echo "Expected exactly one jar matching '${jar}' on release ${tag}." >&2
+            exit 1
+          fi
+
+          # "feat(menus): add a search box" -> "Add a search box". The first
+          # release has no previous tag and lists nothing.
+          git fetch --tags --force --quiet
+          previous="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          : > .bbb-dist/changes.txt
+          if [[ -n "$previous" ]]; then
+            git log --no-merges --format=%s "${previous}..${tag}" \
+              | { grep -E '^(feat|fix|perf)(\([^)]*\))?!?: ' || true; } \
+              | sed -E 's/^[a-z]+(\([^)]*\))?!?: //; s/^(.)/\U\1/' > .bbb-dist/changes.txt
+          fi
+
+          ./.exylia-shared/publish-builtbybit.sh "$NAME" "$VERSION" "${jars[0]}" .bbb-dist/changes.txt

@@ -34,6 +34,35 @@ creates that release:
 Secret `MODRINTH_TOKEN` (a PAT with Create versions, Read projects, Read versions); missing skips
 with a notice. A version number Modrinth already has is skipped, so re-runs never duplicate.
 
+## BuiltByBit
+
+`.github/workflows/builtbybit.yml` mirrors the same release to BuiltByBit (v2 Creator API): it uploads
+the jar as a new version and posts the public update, listing the `feat`/`fix`/`perf` commits since the
+previous tag. Call it next to the Modrinth job:
+
+```yaml
+  builtbybit:
+    needs: release
+    uses: Exylia-Plugins/.github/.github/workflows/builtbybit.yml@main
+    with:
+      version: ${{ github.ref_name }}
+      name: ExyliaDisplays                       # asset ExyliaDisplays-<version>.jar
+      resource-id: ${{ vars.BBB_RESOURCE_ID }}
+    secrets: inherit
+```
+
+| Input | Default | |
+|---|---|---|
+| `version` | required | `1.2.0` or `v1.2.0`; the release tag is `v<version>` |
+| `name` | required | Display name; the update is titled `<name> v<version>` |
+| `jar` | `<name>-<version>.jar` | Release asset pattern; must match exactly one file |
+| `resource-id` | empty | BuiltByBit resource id; empty skips with a notice |
+| `post-update` | `true` | `false` uploads the version without the public update post |
+
+Secret `BUILTBYBIT_TOKEN` (a Private API token, Ultimate account); missing skips with a notice. A
+version BuiltByBit already lists is skipped, so re-runs never duplicate. By hand:
+`BUILTBYBIT_TOKEN=... BBB_RESOURCE=<id> ./publish-builtbybit.sh <name> <version> <jar> [changes-file]`.
+
 ## By hand
 
 ```sh
